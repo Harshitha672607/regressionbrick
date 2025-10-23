@@ -1,11 +1,11 @@
-name: Load HR Compensation CSV Dataset
+name: 2 Load HR Compensation CSV Dataset
 description: Downloads HR compensation CSV file and prepares train/test datasets for regression
 inputs:
   - {name: cdn_url, type: String, description: 'CDN URL to download CSV file'}
-  - {name: target_column, type: String, description: 'Target column name', default: 'salary'}
-  - {name: feature_columns, type: String, description: 'Comma-separated feature columns', default: 'years_exp,level,location,function'}
-  - {name: train_split, type: Float, description: 'Train split ratio', default: 0.8}
-  - {name: shuffle_seed, type: Integer, description: 'Random seed for shuffling', default: 42}
+  - {name: target_column, type: String, description: 'Target column name'}
+  - {name: feature_columns, type: String, description: 'Comma-separated feature columns'}
+  - {name: train_split, type: Float, description: 'Train split ratio'}
+  - {name: shuffle_seed, type: Integer, description: 'Random seed for shuffling'}
 outputs:
   - {name: train_data, type: Dataset}
   - {name: test_data, type: Dataset}
