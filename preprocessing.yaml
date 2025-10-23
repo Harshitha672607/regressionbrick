@@ -1,0 +1,144 @@
+name: Preprocess HR Compensation Data
+description: Preprocesses HR compensation data with OneHotEncoding and log transformation
+inputs:
+  - name: train_data
+    type: Dataset
+  - name: test_data
+    type: Dataset
+  - name: dataset_info
+    type: DatasetInfo
+  - name: model_config
+    type: String
+    description: 'Regression configuration as JSON string'
+outputs:
+  - name: processed_data_pickle
+    type: Dataset
+  - name: preprocessing_pipeline
+    type: Model
+  - name: weight_out
+    type: String
+implementation:
+  container:
+    image: nikhilv215/nesy-factory:v22
+    command:
+      - sh
+      - -c
+      - |
+        python -c "
+        import sys, os, pickle, json, pandas as pd, numpy as np
+        from sklearn.compose import ColumnTransformer
+        from sklearn.preprocessing import OneHotEncoder
+        from sklearn.pipeline import Pipeline
+        from sklearn.linear_model import LinearRegression
+        from sklearn.compose import TransformedTargetRegressor
+        
+        print('Number of arguments received:', len(sys.argv))
+        for i, arg in enumerate(sys.argv):
+            print(f'  Argument {i}: {arg[:100] if len(str(arg)) > 100 else arg}')
+        
+        # Get args
+        if len(sys.argv) < 8:
+            raise ValueError(f'Expected 8 arguments, got {len(sys.argv)}')
+        
+        train_path = sys.argv[1]
+        test_path = sys.argv[2]
+        info_path = sys.argv[3]
+        config_str = sys.argv[4]
+        out_path = sys.argv[5]
+        pipeline_path = sys.argv[6]
+        weight_path = sys.argv[7]
+        
+        print('Starting HR compensation preprocessing...')
+        
+        # Load data
+        with open(train_path, 'rb') as f: train_data = pickle.load(f)
+        with open(test_path, 'rb') as f: test_data = pickle.load(f)
+        with open(info_path, 'rb') as f: dataset_info = pickle.load(f)
+        
+        print(f'Loaded train: {len(train_data[\"features\"])} samples, test: {len(test_data[\"features\"])} samples')
+        print(f'Feature columns: {dataset_info[\"feature_columns\"]}')
+        
+        # Extract data
+        X_train = train_data['features']
+        y_train = train_data['targets']
+        X_test = test_data['features']
+        y_test = test_data['targets']
+        
+        # Define preprocessing
+        numeric_features = dataset_info.get('numeric_features', ['years_exp'])
+        categorical_features = dataset_info.get('categorical_features', ['level', 'location', 'function'])
+        
+        print(f'Numeric features: {numeric_features}')
+        print(f'Categorical features: {categorical_features}')
+        
+        # Create preprocessing pipeline
+        preprocess = ColumnTransformer(
+            transformers=[
+                (\"num\", \"passthrough\", numeric_features),
+                (\"cat\", OneHotEncoder(drop=\"first\", handle_unknown=\"ignore\"), categorical_features),
+            ]
+        )
+        
+        # Create full pipeline with log transformation
+        linreg = LinearRegression()
+        model = TransformedTargetRegressor(
+            regressor=Pipeline(steps=[(\"prep\", preprocess), (\"lin\", linreg)]),
+            func=np.log, inverse_func=np.exp, check_inverse=False
+        )
+        
+        print('Preprocessing pipeline created successfully')
+        
+        # Create data wrapper
+        class DataWrapper:
+            def __init__(self, data_dict):
+                self.__dict__.update(data_dict)
+        
+        data_wrapper = DataWrapper({
+            'X_train': X_train,
+            'y_train': y_train,
+            'X_test': X_test,
+            'y_test': y_test,
+            'preprocessor': preprocess,
+            'model_pipeline': model,
+            'numeric_features': numeric_features,
+            'categorical_features': categorical_features,
+            'dataset_info': dataset_info
+        })
+        
+        # Save processed data
+        os.makedirs(os.path.dirname(out_path) or '.', exist_ok=True)
+        with open(out_path, 'wb') as f:
+            pickle.dump(data_wrapper, f)
+        
+        # Save preprocessing pipeline separately
+        os.makedirs(os.path.dirname(pipeline_path) or '.', exist_ok=True)
+        with open(pipeline_path, 'wb') as f:
+            pickle.dump(preprocess, f)
+        
+        # Save config
+        weight_config = {
+            'preprocessing_complete': True,
+            'numeric_features': numeric_features,
+            'categorical_features': categorical_features,
+            'feature_columns': dataset_info['feature_columns'],
+            'target_column': dataset_info['target_column'],
+            'model_type': 'linear_regression_log_target',
+            'transformation': 'log_target_exp_inverse'
+        }
+        
+        os.makedirs(os.path.dirname(weight_path) or '.', exist_ok=True)
+        with open(weight_path, 'w') as f:
+            json.dump(weight_config, f, indent=2)
+        
+        print('HR compensation preprocessing complete!')
+        print(f'Output saved to: {out_path}')
+        print(f'Pipeline saved to: {pipeline_path}')
+        " "$0" "$1" "$2" "$3" "$4" "$5" "$6"
+    args:
+      - {inputPath: train_data}
+      - {inputPath: test_data}
+      - {inputPath: dataset_info}
+      - {inputValue: model_config}
+      - {outputPath: processed_data_pickle}
+      - {outputPath: preprocessing_pipeline}
+      - {outputPath: weight_out}
