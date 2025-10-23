@@ -1,0 +1,159 @@
+name: Load CSV Dataset for Regression
+description: Downloads CSV file from CDN and prepares train/test datasets for regression
+inputs:
+  - {name: cdn_url, type: String, description: 'CDN URL to download CSV file'}
+  - {name: target_column, type: String, description: 'Name of target column for regression'}
+  - {name: train_split, type: Float, description: 'Train split ratio (default 0.7)'}
+  - {name: shuffle_seed, type: Integer, description: 'Random seed for shuffling'}
+outputs:
+  - {name: train_data, type: Dataset}
+  - {name: test_data, type: Dataset}
+  - {name: dataset_info, type: DatasetInfo}
+implementation:
+  container:
+    image: gurpreetgandhi/nesy-factory:v19
+    command:
+      - sh
+      - -c
+      - |
+        python -c "
+        import sys, os, pickle, json, io, pandas as pd
+        import requests
+        from urllib.parse import unquote
+        from sklearn.model_selection import train_test_split
+        from sklearn.preprocessing import StandardScaler
+        import numpy as np
+        
+        print('Number of arguments:', len(sys.argv))
+        print('Arguments:', sys.argv)
+        
+        # Get args
+        cdn_url = sys.argv[1]
+        target_column = sys.argv[2]
+        train_split = float(sys.argv[3])
+        shuffle_seed = int(sys.argv[4])
+        train_data_path = sys.argv[5]
+        test_data_path = sys.argv[6]
+        dataset_info_path = sys.argv[7]
+        
+        print('Starting CSV dataset download...')
+        print(f'CDN URL: {cdn_url}')
+        print(f'Target column: {target_column}')
+        print(f'Train split: {train_split}')
+        print(f'Shuffle seed: {shuffle_seed}')
+        
+        # Download CSV function
+        def download_and_process_csv(url, target_col):
+            decoded_url = unquote(url)
+            print(f'Downloading from decoded URL: {decoded_url}')
+            
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(decoded_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            # Read CSV
+            df = pd.read_csv(io.StringIO(response.text))
+            print(f'Loaded CSV with shape: {df.shape}')
+            print(f'Columns: {list(df.columns)}')
+            
+            # Check if target column exists
+            if target_col not in df.columns:
+                raise ValueError(f'Target column \"{target_col}\" not found in CSV. Available columns: {list(df.columns)}')
+            
+            # Separate features and target
+            X = df.drop(columns=[target_col])
+            y = df[target_col]
+            
+            # Handle categorical variables
+            categorical_cols = X.select_dtypes(include=['object']).columns
+            if len(categorical_cols) > 0:
+                print(f'Encoding categorical columns: {list(categorical_cols)}')
+                X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
+            
+            # Convert to numpy
+            features = X.values.astype(np.float32)
+            targets = y.values.astype(np.float32)
+            feature_names = list(X.columns)
+            
+            return features, targets, feature_names, df
+        
+        # Download and process
+        features, targets, feature_names, original_df = download_and_process_csv(cdn_url, target_column)
+        
+        if len(features) == 0:
+            raise Exception('No data found in CSV file')
+        
+        # Split data
+        X_train, X_test, y_train, y_test = train_test_split(
+            features, targets, 
+            train_size=train_split, 
+            random_state=shuffle_seed,
+            shuffle=True
+        )
+        
+        # Scale features
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        
+        # Create dataset structures
+        train_data = {
+            'features': X_train_scaled,
+            'targets': y_train,
+            'feature_names': feature_names,
+            'scaler': scaler
+        }
+        
+        test_data = {
+            'features': X_test_scaled,
+            'targets': y_test,
+            'feature_names': feature_names,
+            'scaler': scaler
+        }
+        
+        # Create dataset info
+        dataset_info = {
+            'total_samples': len(features),
+            'train_samples': len(X_train),
+            'test_samples': len(X_test),
+            'num_features': len(feature_names),
+            'feature_names': feature_names,
+            'target_column': target_column,
+            'target_stats': {
+                'mean': float(np.mean(targets)),
+                'std': float(np.std(targets)),
+                'min': float(np.min(targets)),
+                'max': float(np.max(targets))
+            },
+            'train_split_ratio': train_split,
+            'shuffle_seed': shuffle_seed,
+            'data_shape': original_df.shape
+        }
+        
+        print(f'Dataset: {len(features)} samples, {len(feature_names)} features')
+        print(f'Train: {len(X_train)} samples, Test: {len(X_test)} samples')
+        print(f'Target stats - Mean: {np.mean(targets):.2f}, Std: {np.std(targets):.2f}')
+        
+        # Save data
+        os.makedirs(os.path.dirname(train_data_path) or '.', exist_ok=True)
+        with open(train_data_path, 'wb') as f:
+            pickle.dump(train_data, f)
+        
+        os.makedirs(os.path.dirname(test_data_path) or '.', exist_ok=True)
+        with open(test_data_path, 'wb') as f:
+            pickle.dump(test_data, f)
+        
+        os.makedirs(os.path.dirname(dataset_info_path) or '.', exist_ok=True)
+        with open(dataset_info_path, 'wb') as f:
+            pickle.dump(dataset_info, f)
+        
+        print('CSV dataset loading complete!')
+        " "$0" "$1" "$2" "$3" "$4" "$5" "$6"
+    args:
+      - {inputValue: cdn_url}
+      - {inputValue: target_column}
+      - {inputValue: train_split}
+      - {inputValue: shuffle_seed}
+      - {outputPath: train_data}
+      - {outputPath: test_data}
+      - {outputPath: dataset_info}
