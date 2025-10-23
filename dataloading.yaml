@@ -19,6 +19,7 @@ implementation:
       - sh
       - -c
       - |
+        pip install pandas numpy requests >/dev/null 2>&1
         python -c "
         import os
         import sys
@@ -29,7 +30,6 @@ implementation:
         import pickle
         from urllib.parse import unquote
 
-        # Read args
         cdn_url = sys.argv[1]
         target_column = sys.argv[2]
         train_split = float(sys.argv[3])
@@ -38,16 +38,15 @@ implementation:
         test_data_path = sys.argv[6]
         dataset_info_path = sys.argv[7]
 
-        print('=== HR Compensation CSV Loader ===')
+        print('HR Compensation CSV Loader')
         print(f'CDN URL: {cdn_url}')
         print(f'Target column: {target_column}')
         print(f'Train split: {train_split}')
         print(f'Shuffle seed: {shuffle_seed}')
 
-        # Decode and download CSV
         decoded_url = unquote(cdn_url)
         try:
-            print('Downloading CSV...')
+            print('Downloading CSV')
             response = requests.get(decoded_url, timeout=30)
             response.raise_for_status()
             df = pd.read_csv(io.BytesIO(response.content))
@@ -56,17 +55,14 @@ implementation:
             print(f'Failed to load dataset: {e}')
             raise
 
-        # Shuffle the dataset
         df = df.sample(frac=1, random_state=shuffle_seed).reset_index(drop=True)
 
-        # Split train/test
         train_size = int(len(df) * train_split)
         train_df = df.iloc[:train_size]
         test_df = df.iloc[train_size:]
 
         print(f'Train shape: {train_df.shape}, Test shape: {test_df.shape}')
 
-        # Build dataset info
         feature_columns = [col for col in df.columns if col != target_column]
         dataset_info = {
             'total_samples': len(df),
@@ -80,7 +76,6 @@ implementation:
             'dtypes': {col: str(df[col].dtype) for col in df.columns},
         }
 
-        # Save outputs
         os.makedirs(os.path.dirname(train_data_path) or '.', exist_ok=True)
         train_df.to_csv(train_data_path, index=False)
         os.makedirs(os.path.dirname(test_data_path) or '.', exist_ok=True)
