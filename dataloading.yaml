@@ -1,10 +1,11 @@
-name: Load CSV Dataset for Regression
-description: Downloads CSV file from CDN and prepares train/test datasets for regression
+name: Load HR Compensation CSV Dataset
+description: Downloads HR compensation CSV file and prepares train/test datasets for regression
 inputs:
   - {name: cdn_url, type: String, description: 'CDN URL to download CSV file'}
-  - {name: target_column, type: String, description: 'Name of target column for regression'}
-  - {name: train_split, type: Float, description: 'Train split ratio (default 0.7)'}
-  - {name: shuffle_seed, type: Integer, description: 'Random seed for shuffling'}
+  - {name: target_column, type: String, description: 'Target column name', default: 'salary'}
+  - {name: feature_columns, type: String, description: 'Comma-separated feature columns', default: 'years_exp,level,location,function'}
+  - {name: train_split, type: Float, description: 'Train split ratio', default: 0.8}
+  - {name: shuffle_seed, type: Integer, description: 'Random seed for shuffling', default: 42}
 outputs:
   - {name: train_data, type: Dataset}
   - {name: test_data, type: Dataset}
@@ -17,12 +18,10 @@ implementation:
       - -c
       - |
         python -c "
-        import sys, os, pickle, json, io, pandas as pd
+        import sys, os, pickle, json, io, pandas as pd, numpy as np
         import requests
         from urllib.parse import unquote
         from sklearn.model_selection import train_test_split
-        from sklearn.preprocessing import StandardScaler
-        import numpy as np
         
         print('Number of arguments:', len(sys.argv))
         print('Arguments:', sys.argv)
@@ -30,20 +29,25 @@ implementation:
         # Get args
         cdn_url = sys.argv[1]
         target_column = sys.argv[2]
-        train_split = float(sys.argv[3])
-        shuffle_seed = int(sys.argv[4])
-        train_data_path = sys.argv[5]
-        test_data_path = sys.argv[6]
-        dataset_info_path = sys.argv[7]
+        feature_columns_str = sys.argv[3]
+        train_split = float(sys.argv[4])
+        shuffle_seed = int(sys.argv[5])
+        train_data_path = sys.argv[6]
+        test_data_path = sys.argv[7]
+        dataset_info_path = sys.argv[8]
         
-        print('Starting CSV dataset download...')
+        print('Starting HR Compensation CSV download...')
         print(f'CDN URL: {cdn_url}')
         print(f'Target column: {target_column}')
+        print(f'Feature columns: {feature_columns_str}')
         print(f'Train split: {train_split}')
         print(f'Shuffle seed: {shuffle_seed}')
         
+        # Parse feature columns
+        feature_columns = [col.strip() for col in feature_columns_str.split(',')]
+        
         # Download CSV function
-        def download_and_process_csv(url, target_col):
+        def download_and_process_hr_data(url, target_col, feature_cols):
             decoded_url = unquote(url)
             print(f'Downloading from decoded URL: {decoded_url}')
             
@@ -56,83 +60,77 @@ implementation:
             print(f'Loaded CSV with shape: {df.shape}')
             print(f'Columns: {list(df.columns)}')
             
-            # Check if target column exists
-            if target_col not in df.columns:
-                raise ValueError(f'Target column \"{target_col}\" not found in CSV. Available columns: {list(df.columns)}')
+            # Check if columns exist
+            missing_cols = [col for col in [target_col] + feature_cols if col not in df.columns]
+            if missing_cols:
+                raise ValueError(f'Columns not found in CSV: {missing_cols}. Available columns: {list(df.columns)}')
             
-            # Separate features and target
-            X = df.drop(columns=[target_col])
-            y = df[target_col]
-            
-            # Handle categorical variables
-            categorical_cols = X.select_dtypes(include=['object']).columns
-            if len(categorical_cols) > 0:
-                print(f'Encoding categorical columns: {list(categorical_cols)}')
-                X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
-            
-            # Convert to numpy
-            features = X.values.astype(np.float32)
-            targets = y.values.astype(np.float32)
-            feature_names = list(X.columns)
-            
-            return features, targets, feature_names, df
+            return df[feature_cols], df[target_col], df
         
         # Download and process
-        features, targets, feature_names, original_df = download_and_process_csv(cdn_url, target_column)
+        X, y, original_df = download_and_process_hr_data(cdn_url, target_column, feature_columns)
         
-        if len(features) == 0:
+        if len(X) == 0:
             raise Exception('No data found in CSV file')
         
-        # Split data
+        # Split data with stratification on 'level' column if it exists
+        if 'level' in feature_columns:
+            stratify_col = X['level']
+            print('Using stratification on level column')
+        else:
+            stratify_col = None
+            print('No level column found for stratification')
+        
         X_train, X_test, y_train, y_test = train_test_split(
-            features, targets, 
+            X, y, 
             train_size=train_split, 
             random_state=shuffle_seed,
-            shuffle=True
+            shuffle=True,
+            stratify=stratify_col
         )
-        
-        # Scale features
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_test_scaled = scaler.transform(X_test)
         
         # Create dataset structures
         train_data = {
-            'features': X_train_scaled,
+            'features': X_train,
             'targets': y_train,
-            'feature_names': feature_names,
-            'scaler': scaler
+            'feature_columns': feature_columns,
+            'target_column': target_column
         }
         
         test_data = {
-            'features': X_test_scaled,
+            'features': X_test,
             'targets': y_test,
-            'feature_names': feature_names,
-            'scaler': scaler
+            'feature_columns': feature_columns,
+            'target_column': target_column
         }
         
         # Create dataset info
         dataset_info = {
-            'total_samples': len(features),
+            'total_samples': len(X),
             'train_samples': len(X_train),
             'test_samples': len(X_test),
-            'num_features': len(feature_names),
-            'feature_names': feature_names,
+            'feature_columns': feature_columns,
             'target_column': target_column,
+            'numeric_features': ['years_exp'],
+            'categorical_features': ['level', 'location', 'function'],
             'target_stats': {
-                'mean': float(np.mean(targets)),
-                'std': float(np.std(targets)),
-                'min': float(np.min(targets)),
-                'max': float(np.max(targets))
+                'mean': float(np.mean(y)),
+                'std': float(np.std(y)),
+                'min': float(np.min(y)),
+                'max': float(np.max(y)),
+                'log_mean': float(np.mean(np.log(y))),
+                'log_std': float(np.std(np.log(y)))
             },
             'train_split_ratio': train_split,
             'shuffle_seed': shuffle_seed,
-            'data_shape': original_df.shape
+            'data_shape': original_df.shape,
+            'has_level_stratification': 'level' in feature_columns
         }
         
-        print(f'Dataset: {len(features)} samples, {len(feature_names)} features')
+        print(f'Dataset: {len(X)} samples, {len(feature_columns)} features')
         print(f'Train: {len(X_train)} samples, Test: {len(X_test)} samples')
-        print(f'Target stats - Mean: {np.mean(targets):.2f}, Std: {np.std(targets):.2f}')
+        print(f'Target stats - Mean: {np.mean(y):.2f}, Std: {np.std(y):.2f}')
+        print(f'Log-target stats - Mean: {np.mean(np.log(y)):.2f}, Std: {np.std(np.log(y)):.2f}')
         
         # Save data
         os.makedirs(os.path.dirname(train_data_path) or '.', exist_ok=True)
@@ -147,11 +145,12 @@ implementation:
         with open(dataset_info_path, 'wb') as f:
             pickle.dump(dataset_info, f)
         
-        print('CSV dataset loading complete!')
-        " "$0" "$1" "$2" "$3" "$4" "$5" "$6"
+        print('HR Compensation dataset loading complete!')
+        " "$0" "$1" "$2" "$3" "$4" "$5" "$6" "$7"
     args:
       - {inputValue: cdn_url}
       - {inputValue: target_column}
+      - {inputValue: feature_columns}
       - {inputValue: train_split}
       - {inputValue: shuffle_seed}
       - {outputPath: train_data}
