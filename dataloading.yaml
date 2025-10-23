@@ -1,4 +1,4 @@
-name: 4 Load HR Compensation CSV
+name: 5 Load HR Compensation CSV
 description: Downloads an HR Compensation CSV file from a CDN, splits it into train/test datasets, and generates dataset metadata.
 
 inputs:
@@ -76,11 +76,14 @@ implementation:
             'dtypes': {col: str(df[col].dtype) for col in df.columns},
         }
 
+        # Ensure directories exist before saving
         os.makedirs(os.path.dirname(train_data_path) or '.', exist_ok=True)
         train_df.to_csv(train_data_path, index=False)
+
         os.makedirs(os.path.dirname(test_data_path) or '.', exist_ok=True)
         test_df.to_csv(test_data_path, index=False)
 
+        os.makedirs(os.path.dirname(dataset_info_path) or '.', exist_ok=True)
         with open(dataset_info_path, 'wb') as f:
             pickle.dump(dataset_info, f)
 
