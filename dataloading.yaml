@@ -1,4 +1,4 @@
-name: 2 Load HR Compensation CSV Dataset
+name: 3 Load HR Compensation CSV Dataset
 description: Downloads HR compensation CSV file and prepares train/test datasets for regression
 inputs:
   - {name: cdn_url, type: String, description: 'CDN URL to download CSV file'}
@@ -33,7 +33,7 @@ implementation:
         test_data_path = sys.argv[7]
         dataset_info_path = sys.argv[8]
 
-        print(f"\n--- HR Compensation CSV Loader ---")
+        print(f"HR Compensation CSV Loader")
         print(f"CDN URL: {cdn_url}")
         print(f"Target column: {target_column}")
         print(f"Feature columns: {feature_columns_str}")
@@ -49,7 +49,7 @@ implementation:
             response.raise_for_status()
             df = pd.read_csv(io.StringIO(response.text))
             print(f"Loaded CSV with shape: {df.shape}")
-            missing_cols = [col for col in [target_col] + feature_cols if col not in df.columns]
+            missing_cols = [col for col in [atarget_col] + feature_cols if col not in df.columns]
             if missing_cols:
                 raise ValueError(f"Missing columns: {missing_cols}. Available: {list(df.columns)}")
             return df[feature_cols], df[target_col], df
