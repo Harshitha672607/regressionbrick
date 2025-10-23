@@ -121,7 +121,7 @@ implementation:
         with open(dataset_info_path, "wb") as f:
             pickle.dump(dataset_info, f)
 
-        print(f"\n Completed loading HR Compensation dataset.")
+        print(f"Completed loading HR Compensation dataset.")
         EOF
     args:
       - {inputValue: cdn_url}
