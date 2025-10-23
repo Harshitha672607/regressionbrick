@@ -1,0 +1,186 @@
+name: HR Linear Regression Evaluate Model
+description: Evaluates trained HR Linear Regression model and generates comprehensive metrics
+inputs:
+  - name: trained_model
+    type: Model
+  - name: data_path
+    type: Dataset
+  - name: model_coefficients
+    type: String
+outputs:
+  - name: metrics
+    type: Metrics
+  - name: metrics_json
+    type: String
+  - name: evaluation_report
+    type: String
+implementation:
+  container:
+    image: gurpreetgandhi/nesy-factory:v19
+    command:
+      - python3
+      - -u
+      - -c
+      - |
+        import sys, os, pickle, json, pandas as pd, numpy as np
+        from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+        import argparse
+        
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--trained_model', type=str, required=True)
+        parser.add_argument('--data_path', type=str, required=True)
+        parser.add_argument('--model_coefficients', type=str, required=True)
+        parser.add_argument('--metrics', type=str, required=True)
+        parser.add_argument('--metrics_json', type=str, required=True)
+        parser.add_argument('--evaluation_report', type=str, required=True)
+        args = parser.parse_args()
+        
+        print(\"Starting HR Linear Regression Evaluation\")
+        
+        # Load trained model
+        if not os.path.exists(args.trained_model):
+            print(\"ERROR: trained_model does not exist!\")
+            sys.exit(1)
+            
+        if not os.path.exists(args.data_path):
+            print(\"ERROR: data_path does not exist!\")
+            sys.exit(1)
+            
+        try:
+            with open(args.trained_model, 'rb') as f:
+                model_pipeline = pickle.load(f)
+            print(\"Trained model loaded successfully\")
+        except Exception as e:
+            print(f\"ERROR loading trained model: {e}\")
+            sys.exit(1)
+            
+        try:
+            with open(args.data_path, 'rb') as f:
+                data_wrapper = pickle.load(f)
+            print(\"Data loaded successfully\")
+        except Exception as e:
+            print(f\"ERROR loading data: {e}\")
+            sys.exit(1)
+            
+        # Load coefficients
+        try:
+            with open(args.model_coefficients, 'r') as f:
+                coefficients_csv = f.read()
+            coefficients_df = pd.read_csv(pd.compat.StringIO(coefficients_csv))
+            print(\"Coefficients loaded successfully\")
+        except Exception as e:
+            print(f\"ERROR loading coefficients: {e}\")
+            coefficients_df = pd.DataFrame()
+        
+        # Extract test data
+        X_test = data_wrapper.X_test
+        y_test = data_wrapper.y_test
+        
+        # Make predictions
+        y_pred = model_pipeline.predict(X_test)
+        
+        # Calculate comprehensive metrics
+        r2 = r2_score(y_test, y_pred)
+        mae = mean_absolute_error(y_test, y_pred)
+        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+        mse = mean_squared_error(y_test, y_pred)
+        
+        # Additional metrics
+        mape = np.mean(np.abs((y_test - y_pred) / y_test)) * 100
+        explained_variance = 1 - (np.var(y_test - y_pred) / np.var(y_test))
+        
+        # Percentage within different error ranges
+        error_percentage_10 = np.mean(np.abs((y_test - y_pred) / y_test) <= 0.10) * 100
+        error_percentage_20 = np.mean(np.abs((y_test - y_pred) / y_test) <= 0.20) * 100
+        error_percentage_30 = np.mean(np.abs((y_test - y_pred) / y_test) <= 0.30) * 100
+        
+        # Create metrics dictionary
+        metrics = {
+            'test_metrics': {
+                'r2_score': float(r2),
+                'mae': float(mae),
+                'rmse': float(rmse),
+                'mse': float(mse),
+                'mape': float(mape),
+                'explained_variance': float(explained_variance),
+                'error_within_10pct': float(error_percentage_10),
+                'error_within_20pct': float(error_percentage_20),
+                'error_within_30pct': float(error_percentage_30)
+            },
+            'target_statistics': {
+                'actual_mean': float(np.mean(y_test)),
+                'actual_std': float(np.std(y_test)),
+                'predicted_mean': float(np.mean(y_pred)),
+                'predicted_std': float(np.std(y_pred)),
+                'actual_min': float(np.min(y_test)),
+                'actual_max': float(np.max(y_test)),
+                'predicted_min': float(np.min(y_pred)),
+                'predicted_max': float(np.max(y_pred))
+            },
+            'model_info': {
+                'model_type': 'linear_regression_log_target',
+                'total_samples': len(y_test),
+                'features_used': data_wrapper.dataset_info['feature_columns'],
+                'coefficients_count': len(coefficients_df) if not coefficients_df.empty else 0
+            },
+            'coefficients_preview': coefficients_df.head(10).to_dict('records') if not coefficients_df.empty else []
+        }
+        
+        # Create detailed evaluation report
+        evaluation_report = f\"\"\"
+        HR Compensation Linear Regression Evaluation Report
+        ==================================================
+        
+        Model Performance:
+        ------------------
+        R² Score: {r2:.3f}
+        Mean Absolute Error: {mae:,.0f}
+        Root Mean Squared Error: {rmse:,.0f}
+        Mean Absolute Percentage Error: {mape:.1f}%
+        
+        Prediction Accuracy:
+        -------------------
+        Predictions within 10% of actual: {error_percentage_10:.1f}%
+        Predictions within 20% of actual: {error_percentage_20:.1f}%
+        Predictions within 30% of actual: {error_percentage_30:.1f}%
+        
+        Target Statistics:
+        -----------------
+        Actual Salary - Mean: {np.mean(y_test):,.0f}, Std: {np.std(y_test):,.0f}
+        Predicted Salary - Mean: {np.mean(y_pred):,.0f}, Std: {np.std(y_pred):,.0f}
+        
+        Features Used: {', '.join(data_wrapper.dataset_info['feature_columns'])}
+        Total Test Samples: {len(y_test)}
+        \"\"\"
+        
+        # Save outputs
+        os.makedirs(os.path.dirname(args.metrics), exist_ok=True)
+        os.makedirs(os.path.dirname(args.metrics_json), exist_ok=True)
+        os.makedirs(os.path.dirname(args.evaluation_report), exist_ok=True)
+        
+        with open(args.metrics, 'w') as f:
+            json.dump(metrics, f, indent=2)
+            
+        with open(args.metrics_json, 'w') as f:
+            json.dump(metrics, f, indent=2)
+            
+        with open(args.evaluation_report, 'w') as f:
+            f.write(evaluation_report)
+        
+        print(\"=== Evaluation Complete ===\")
+        print(evaluation_report)
+        print(f\"\\nMetrics saved to: {args.metrics}\")
+        print(f\"Evaluation report saved to: {args.evaluation_report}\")
+    args:
+      - --trained_model
+      - {inputPath: trained_model}
+      - --data_path
+      - {inputPath: data_path}
+      - --model_coefficients
+      - {inputPath: model_coefficients}
+      - --metrics
+      - {outputPath: metrics}
+      - --metrics_json
+      - {outputPath: metrics_json}
+      - --evaluation_report
+      - {outputPath: evaluation_report}
