@@ -1,4 +1,4 @@
-name: 1 Preprocess HR Compensation Data
+name: 2 Preprocess HR Compensation Data
 description: Preprocesses HR compensation data with OneHotEncoding and log transformation
 inputs:
   - name: train_data
@@ -25,7 +25,7 @@ implementation:
       - -c
       - |
         python -c "
-        import sys, os, json, pandas as pd, numpy as np
+        import sys, os, json, pickle, pandas as pd, numpy as np
         from sklearn.compose import ColumnTransformer
         from sklearn.preprocessing import OneHotEncoder
         from sklearn.pipeline import Pipeline
@@ -112,7 +112,6 @@ implementation:
 
         # Save processed data
         os.makedirs(os.path.dirname(out_path) or '.', exist_ok=True)
-        import pickle
         with open(out_path, 'wb') as f:
             pickle.dump(data_wrapper, f)
 
@@ -147,4 +146,3 @@ implementation:
       - {outputPath: processed_data_pickle}
       - {outputPath: preprocessing_pipeline}
       - {outputPath: weight_out}
-
