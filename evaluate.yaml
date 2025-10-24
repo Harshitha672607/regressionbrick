@@ -29,72 +29,158 @@ implementation:
         for i, arg in enumerate(sys.argv):
             print(f"  Argument {i}: {arg}")
 
-        # Expect: 1 script + 6 args = 7 total
+        # FIXED: Expect 7 total arguments (script name + 3 inputs + 3 outputs = 7)
         if len(sys.argv) != 7:
-            raise ValueError(f"Expected 7 arguments, got {len(sys.argv)}")
+            raise ValueError(f"Expected 7 total arguments (script + 6 params), got {len(sys.argv)}: {sys.argv}")
 
-        _, trained_model_path, data_path, model_coefficients_path, metrics_path, metrics_json_path, evaluation_report_path = sys.argv
+        # FIXED: Correct argument unpacking - script name + 6 parameters
+        script_name, trained_model_path, data_path, model_coefficients_path, metrics_path, metrics_json_path, evaluation_report_path = sys.argv
 
         print("Starting HR Linear Regression Evaluation")
         print(f"Trained model path: {trained_model_path}")
         print(f"Data path: {data_path}")
         print(f"Coefficients path: {model_coefficients_path}")
+        print(f"Metrics output path: {metrics_path}")
+        print(f"Metrics JSON output path: {metrics_json_path}")
+        print(f"Report output path: {evaluation_report_path}")
 
+        # Define the DataWrapper class
         class DataWrapper:
             def __init__(self, data_dict=None):
                 if data_dict:
                     self.__dict__.update(data_dict)
 
-        # Load model
-        with open(trained_model_path, 'rb') as f:
-            model_pipeline = pickle.load(f)
+        # Load trained model
+        if not os.path.exists(trained_model_path):
+            raise FileNotFoundError(f"Trained model not found: {trained_model_path}")
+            
+        if not os.path.exists(data_path):
+            raise FileNotFoundError(f"Data path not found: {data_path}")
 
-        with open(data_path, 'rb') as f:
-            data_wrapper = pickle.load(f)
+        try:
+            with open(trained_model_path, 'rb') as f:
+                model_pipeline = pickle.load(f)
+            print("Trained model loaded successfully")
+        except Exception as e:
+            raise Exception(f"ERROR loading trained model: {e}")
 
+        try:
+            with open(data_path, 'rb') as f:
+                data_wrapper = pickle.load(f)
+            print("Data loaded successfully")
+        except Exception as e:
+            raise Exception(f"ERROR loading data: {e}")
+
+        # Load coefficients
         try:
             with open(model_coefficients_path, 'r') as f:
                 coefficients_csv = f.read()
             coefficients_df = pd.read_csv(pd.compat.StringIO(coefficients_csv))
-        except Exception:
+            print("Coefficients loaded successfully")
+        except Exception as e:
+            print(f"Warning loading coefficients: {e}")
             coefficients_df = pd.DataFrame()
 
-        X_test = data_wrapper.X_test
-        y_test = data_wrapper.y_test
-        dataset_info = getattr(data_wrapper, 'dataset_info', {})
+        # Extract test data
+        try:
+            X_test = data_wrapper.X_test
+            y_test = data_wrapper.y_test
+            dataset_info = getattr(data_wrapper, 'dataset_info', {})
+            print(f"Extracted test data: {len(X_test)} samples")
+        except AttributeError as e:
+            raise Exception(f"ERROR extracting test data from data wrapper: {e}")
+
+        # Fallback for dataset_info
         if not dataset_info:
             dataset_info = {
-                'feature_columns': list(X_test.columns),
+                'feature_columns': list(X_test.columns) if X_test is not None else [],
                 'target_column': 'salary'
             }
 
-        print(f"Evaluating on {len(X_test)} samples")
+        print(f"Evaluating on {len(X_test)} test samples")
+        print(f"Features: {dataset_info.get('feature_columns', [])}")
 
+        # Make predictions
         y_pred = model_pipeline.predict(X_test)
 
-        # Metrics
+        # Calculate comprehensive metrics
         r2 = r2_score(y_test, y_pred)
         mae = mean_absolute_error(y_test, y_pred)
         rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+        mse = mean_squared_error(y_test, y_pred)
+        
+        # Additional metrics
         mape = np.mean(np.abs((y_test - y_pred) / y_test)) * 100
+        explained_variance = 1 - (np.var(y_test - y_pred) / np.var(y_test))
+        
+        # Percentage within different error ranges
+        error_percentage_10 = np.mean(np.abs((y_test - y_pred) / y_test) <= 0.10) * 100
+        error_percentage_20 = np.mean(np.abs((y_test - y_pred) / y_test) <= 0.20) * 100
+        error_percentage_30 = np.mean(np.abs((y_test - y_pred) / y_test) <= 0.30) * 100
 
+        # Create comprehensive metrics dictionary
         metrics = {
-            'r2_score': r2,
-            'mae': mae,
-            'rmse': rmse,
-            'mape': mape
+            'test_metrics': {
+                'r2_score': float(r2),
+                'mae': float(mae),
+                'rmse': float(rmse),
+                'mse': float(mse),
+                'mape': float(mape),
+                'explained_variance': float(explained_variance),
+                'error_within_10pct': float(error_percentage_10),
+                'error_within_20pct': float(error_percentage_20),
+                'error_within_30pct': float(error_percentage_30)
+            },
+            'target_statistics': {
+                'actual_mean': float(np.mean(y_test)),
+                'actual_std': float(np.std(y_test)),
+                'predicted_mean': float(np.mean(y_pred)),
+                'predicted_std': float(np.std(y_pred)),
+                'actual_min': float(np.min(y_test)),
+                'actual_max': float(np.max(y_test)),
+                'predicted_min': float(np.min(y_pred)),
+                'predicted_max': float(np.max(y_pred))
+            },
+            'model_info': {
+                'model_type': 'linear_regression_log_target',
+                'total_samples': len(y_test),
+                'features_used': dataset_info.get('feature_columns', []),
+                'coefficients_count': len(coefficients_df) if not coefficients_df.empty else 0
+            }
         }
 
-        evaluation_report = f'''
-        HR Linear Regression Evaluation Report
-        =======================================
-        R² Score: {r2:.3f}
-        MAE: {mae:,.2f}
-        RMSE: {rmse:,.2f}
-        MAPE: {mape:.2f}%
-        '''
+        # Create detailed evaluation report
+        evaluation_report = f"""
+HR Compensation Linear Regression Evaluation Report
+==================================================
 
+Model Performance:
+------------------
+R² Score: {r2:.3f}
+Mean Absolute Error: {mae:,.0f}
+Root Mean Squared Error: {rmse:,.0f}
+Mean Absolute Percentage Error: {mape:.1f}%
+
+Prediction Accuracy:
+-------------------
+Predictions within 10% of actual: {error_percentage_10:.1f}%
+Predictions within 20% of actual: {error_percentage_20:.1f}%
+Predictions within 30% of actual: {error_percentage_30:.1f}%
+
+Target Statistics:
+-----------------
+Actual Salary - Mean: {np.mean(y_test):,.0f}, Std: {np.std(y_test):,.0f}
+Predicted Salary - Mean: {np.mean(y_pred):,.0f}, Std: {np.std(y_pred):,.0f}
+
+Features Used: {', '.join(dataset_info.get('feature_columns', []))}
+Total Test Samples: {len(y_test)}
+"""
+
+        # Save outputs
         os.makedirs(os.path.dirname(metrics_path) or '.', exist_ok=True)
+        os.makedirs(os.path.dirname(metrics_json_path) or '.', exist_ok=True)
+        os.makedirs(os.path.dirname(evaluation_report_path) or '.', exist_ok=True)
+
         with open(metrics_path, 'w') as f:
             json.dump(metrics, f, indent=2)
 
@@ -106,6 +192,8 @@ implementation:
 
         print("Evaluation complete!")
         print(evaluation_report)
+        print(f"Metrics saved to: {metrics_path}")
+        print(f"Evaluation report saved to: {evaluation_report_path}")
         PYCODE
     args:
       - {inputPath: trained_model}
