@@ -1,4 +1,4 @@
-name: 2 Linear Regression Evaluate Model
+name: 5 Linear Regression Evaluate Model
 description: Evaluates trained HR Linear Regression model and generates comprehensive metrics
 inputs:
   - name: trained_model
@@ -165,32 +165,23 @@ implementation:
             }
         }
         
-        # Create detailed evaluation report
-        evaluation_report = f'''
-HR Compensation Linear Regression Evaluation Report
-
-
-Model Performance:
-
-R² Score: {r2:.3f}
-Mean Absolute Error: {mae:,.0f}
-Root Mean Squared Error: {rmse:,.0f}
-Mean Absolute Percentage Error: {mape:.1f}%
-
-Prediction Accuracy:
-
-Predictions within 10% of actual: {error_percentage_10:.1f}%
-Predictions within 20% of actual: {error_percentage_20:.1f}%
-Predictions within 30% of actual: {error_percentage_30:.1f}%
-
-Target Statistics:
-
-Actual Salary - Mean: {np.mean(y_test):,.0f}, Std: {np.std(y_test):,.0f}
-Predicted Salary - Mean: {np.mean(y_pred):,.0f}, Std: {np.std(y_pred):,.0f}
-
-Features Used: {', '.join(dataset_info.get('feature_columns', []))}
-Total Test Samples: {len(y_test)}
-'''
+        # Create simple evaluation report without complex formatting
+        evaluation_report = f'HR Compensation Linear Regression Evaluation Report'
+        evaluation_report += f'========='
+        evaluation_report += f'Model Performance:'
+        evaluation_report += f'R² Score: {r2:.3f}'
+        evaluation_report += f'Mean Absolute Error: {mae:,.0f}'
+        evaluation_report += f'Root Mean Squared Error: {rmse:,.0f}'
+        evaluation_report += f'Mean Absolute Percentage Error: {mape:.1f}%'
+        evaluation_report += f'Prediction Accuracy:'
+        evaluation_report += f'Predictions within 10% of actual: {error_percentage_10:.1f}%'
+        evaluation_report += f'Predictions within 20% of actual: {error_percentage_20:.1f}%'
+        evaluation_report += f'Predictions within 30% of actual: {error_percentage_30:.1f}%'
+        evaluation_report += f'Target Statistics:\\n'
+        evaluation_report += f'Actual Salary - Mean: {np.mean(y_test):,.0f}, Std: {np.std(y_test):,.0f}'
+        evaluation_report += f'Predicted Salary - Mean: {np.mean(y_pred):,.0f}, Std: {np.std(y_pred):,.0f}'
+        evaluation_report += f'Features Used: {\\", \\".join(dataset_info.get(\\"feature_columns\\", []))}'
+        evaluation_report += f'Total Test Samples: {len(y_test)}'
         
         # Save outputs
         try:
@@ -223,7 +214,7 @@ Total Test Samples: {len(y_test)}
         print('Model evaluation completed successfully!')
         print(f'Metrics saved to: {metrics_path}')
         print(f'Evaluation report saved to: {evaluation_report_path}')
-        " "$0" "$1" "$2" "$3" "$4" "$5" "$6"
+        " -- "$0" "$1" "$2" "$3" "$4" "$5" "$6"
     args:
       - {inputPath: trained_model}
       - {inputPath: data_path}
