@@ -21,7 +21,7 @@ implementation:
       - sh
       - -c
       - |
-        python - "$@" <<'PYCODE'
+        python -c '
         import sys, os, pickle, json, pandas as pd, numpy as np
         from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 
