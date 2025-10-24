@@ -1,4 +1,4 @@
-name: 8 Preprocess HR Compensation Data
+name: 9 Preprocess HR Compensation Data
 description: Preprocesses HR compensation data with OneHotEncoding and log transformation
 inputs:
   - name: train_data
@@ -68,19 +68,32 @@ implementation:
             dataset_info = pickle.load(f)
         
         print(f'Loaded train: {train_df.shape[0]} samples, test: {test_df.shape[0]} samples')
-        print(f'Feature columns: {dataset_info[\"feature_columns\"]}')
+        print(f'Dataset info keys: {list(dataset_info.keys())}')
         
-        target_col = dataset_info['target_column']
+        # FIXED: Safe access to dataset_info with defaults
+        target_col = dataset_info.get('target_column', 'salary')
+        feature_columns = dataset_info.get('feature_columns', [col for col in train_df.columns if col != target_col])
+        
+        print(f'Target column: {target_col}')
+        print(f'Feature columns: {feature_columns}')
+        
         X_train = train_df.drop(columns=[target_col])
         y_train = train_df[target_col]
         X_test = test_df.drop(columns=[target_col])
         y_test = test_df[target_col]
         
-        numeric_features = dataset_info.get('numeric_features', ['years_exp'])
-        categorical_features = dataset_info.get('categorical_features', ['level', 'location', 'function'])
+        # FIXED: Define numeric and categorical features with safe defaults
+        # Assuming common HR compensation dataset structure
+        numeric_features = dataset_info.get('numeric_features', ['years_exp', 'age', 'performance_rating'])
+        categorical_features = dataset_info.get('categorical_features', ['level', 'location', 'function', 'department', 'education'])
+        
+        # Filter to only include columns that actually exist in the data
+        numeric_features = [feat for feat in numeric_features if feat in X_train.columns]
+        categorical_features = [feat for feat in categorical_features if feat in X_train.columns]
         
         print(f'Numeric features: {numeric_features}')
         print(f'Categorical features: {categorical_features}')
+        print(f'All columns in data: {list(X_train.columns)}')
         
         # Create preprocessing pipeline
         preprocess = ColumnTransformer(
@@ -129,10 +142,12 @@ implementation:
             'preprocessing_complete': True,
             'numeric_features': numeric_features,
             'categorical_features': categorical_features,
-            'feature_columns': dataset_info['feature_columns'],
-            'target_column': dataset_info['target_column'],
+            'feature_columns': feature_columns,
+            'target_column': target_col,
             'model_type': 'linear_regression_log_target',
-            'transformation': 'log_target'
+            'transformation': 'log_target',
+            'train_samples': len(X_train),
+            'test_samples': len(X_test)
         }
         
         os.makedirs(os.path.dirname(weight_path) or '.', exist_ok=True)
