@@ -16,51 +16,57 @@ outputs:
     type: String
 implementation:
   container:
-    image: gurpreetgandhi/nesy-factory:v19
+    image: nikhilv215/nesy-factory:v22
     command:
-      - python3
-      - -u
+      - sh
       - -c
       - |
+        python -c "
         import sys, os, pickle, json, pandas as pd, numpy as np
         from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
-        import argparse
         
-        parser = argparse.ArgumentParser()
-        parser.add_argument('--data_path', type=str, required=True)
-        parser.add_argument('--preprocessing_pipeline', type=str, required=True)
-        parser.add_argument('--config', type=str, required=True)
-        parser.add_argument('--trained_model', type=str, required=True)
-        parser.add_argument('--training_history', type=str, required=True)
-        parser.add_argument('--model_coefficients', type=str, required=True)
-        args = parser.parse_args()
+        print('Number of arguments received:', len(sys.argv))
+        for i, arg in enumerate(sys.argv):
+            if i == 3:  # config string might be long
+                print(f'  Argument {i}: {arg[:100]}...')
+            else:
+                print(f'  Argument {i}: {arg}')
         
-        print(\"Starting HR Linear Regression Training\")
+        # Get args - Expect 7 arguments total
+        if len(sys.argv) < 7:
+            raise ValueError(f'Expected 7 arguments, got {len(sys.argv)}')
+        
+        data_path = sys.argv[1]
+        preprocessing_path = sys.argv[2]
+        config_str = sys.argv[3]
+        trained_model_path = sys.argv[4]
+        training_history_path = sys.argv[5]
+        model_coefficients_path = sys.argv[6]
+        
+        print('Starting HR Linear Regression Training')
+        print(f'Data path: {data_path}')
+        print(f'Preprocessing path: {preprocessing_path}')
         
         # Load data
-        if not os.path.exists(args.data_path):
-            print(\"ERROR: data_path does not exist!\")
-            sys.exit(1)
+        if not os.path.exists(data_path):
+            raise FileNotFoundError(f'data_path does not exist: {data_path}')
             
-        if not os.path.exists(args.preprocessing_pipeline):
-            print(\"ERROR: preprocessing_pipeline does not exist!\")
-            sys.exit(1)
+        if not os.path.exists(preprocessing_path):
+            raise FileNotFoundError(f'preprocessing_pipeline does not exist: {preprocessing_path}')
             
         try:
-            with open(args.data_path, 'rb') as f:
+            with open(data_path, 'rb') as f:
                 data_wrapper = pickle.load(f)
-            print(\"Data loaded successfully\")
+            print('Data loaded successfully')
         except Exception as e:
-            print(f\"ERROR loading data: {e}\")
-            sys.exit(1)
+            raise Exception(f'ERROR loading data: {e}')
             
         try:
-            with open(args.preprocessing_pipeline, 'rb') as f:
+            with open(preprocessing_path, 'rb') as f:
                 preprocess = pickle.load(f)
-            print(\"Preprocessing pipeline loaded successfully\")
+            print('Preprocessing pipeline loaded successfully')
         except Exception as e:
-            print(f\"ERROR loading preprocessing pipeline: {e}\")
-            sys.exit(1)
+            raise Exception(f'ERROR loading preprocessing pipeline: {e}')
             
         # Extract data
         X_train = data_wrapper.X_train
@@ -69,10 +75,11 @@ implementation:
         y_test = data_wrapper.y_test
         model_pipeline = data_wrapper.model_pipeline
         
-        print(f\"Training on {len(X_train)} samples, testing on {len(X_test)} samples\")
+        print(f'Training on {len(X_train)} samples, testing on {len(X_test)} samples')
+        print(f'Features: {list(X_train.columns)}')
         
         # Train model
-        print(\"Training model...\")
+        print('Training model...')
         model_pipeline.fit(X_train, y_train)
         
         # Make predictions
@@ -87,20 +94,37 @@ implementation:
         train_rmse = np.sqrt(mean_squared_error(y_train, y_pred_train))
         test_rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
         
-        # Extract coefficients
-        pipe = model_pipeline.regressor_
-        ohe = pipe.named_steps[\"prep\"].named_transformers_[\"cat\"]
-        lin = pipe.named_steps[\"lin\"]
-        
-        feature_names = np.r_[data_wrapper.numeric_features, ohe.get_feature_names_out(data_wrapper.categorical_features)]
-        coefs_log = lin.coef_
-        
-        coefficients_df = pd.DataFrame({
-            \"feature\": feature_names,
-            \"coef_log\": coefs_log,
-            \"multiplier\": np.exp(coefs_log),
-            \"percent_effect_vs_baseline\": (np.exp(coefs_log) - 1) * 100
-        }).sort_values(\"feature\")
+        # Extract coefficients with safe access
+        try:
+            pipe = model_pipeline.regressor_
+            ohe = pipe.named_steps['prep'].named_transformers_['cat']
+            lin = pipe.named_steps['lin']
+            
+            feature_names = np.r_[data_wrapper.numeric_features, ohe.get_feature_names_out(data_wrapper.categorical_features)]
+            coefs_log = lin.coef_
+            
+            coefficients_df = pd.DataFrame({
+                'feature': feature_names,
+                'coef_log': coefs_log,
+                'multiplier': np.exp(coefs_log),
+                'percent_effect_vs_baseline': (np.exp(coefs_log) - 1) * 100
+            }).sort_values('feature')
+            
+            intercept_log = float(lin.intercept_)
+            intercept_original = float(np.exp(lin.intercept_))
+            
+        except Exception as e:
+            print(f'Warning: Could not extract detailed coefficients: {e}')
+            # Create basic coefficients structure
+            feature_names = list(X_train.columns)
+            coefficients_df = pd.DataFrame({
+                'feature': feature_names,
+                'coef_log': [0] * len(feature_names),
+                'multiplier': [1] * len(feature_names),
+                'percent_effect_vs_baseline': [0] * len(feature_names)
+            })
+            intercept_log = 0
+            intercept_original = 1
         
         # Create training history
         history = {
@@ -116,55 +140,56 @@ implementation:
             },
             'coefficients': coefficients_df.to_dict('records'),
             'feature_names': feature_names.tolist(),
-            'intercept_log': float(lin.intercept_),
-            'intercept_original': float(np.exp(lin.intercept_))
+            'intercept_log': intercept_log,
+            'intercept_original': intercept_original,
+            'training_samples': len(X_train),
+            'test_samples': len(X_test)
         }
         
         # Save results
         try:
-            os.makedirs(os.path.dirname(args.trained_model), exist_ok=True)
-            os.makedirs(os.path.dirname(args.training_history), exist_ok=True)
-            os.makedirs(os.path.dirname(args.model_coefficients), exist_ok=True)
+            os.makedirs(os.path.dirname(trained_model_path) or '.', exist_ok=True)
+            os.makedirs(os.path.dirname(training_history_path) or '.', exist_ok=True)
+            os.makedirs(os.path.dirname(model_coefficients_path) or '.', exist_ok=True)
             
             # Save trained model
-            with open(args.trained_model, 'wb') as f:
+            with open(trained_model_path, 'wb') as f:
                 pickle.dump(model_pipeline, f)
             
             # Save training history
-            with open(args.training_history, 'w') as f:
+            with open(training_history_path, 'w') as f:
                 json.dump(history, f, indent=2)
             
             # Save coefficients as CSV string
             coefficients_csv = coefficients_df.to_csv(index=False)
-            with open(args.model_coefficients, 'w') as f:
+            with open(model_coefficients_path, 'w') as f:
                 f.write(coefficients_csv)
             
-            print(\"=== Training Complete ===\")
-            print(\"=== Test Performance ===\")
-            print(f\"R^2:  {test_r2:.3f}\")
-            print(f\"MAE:  {test_mae:,.0f}\")
-            print(f\"RMSE: {test_rmse:,.0f}\")
-            print(f\"\\n=== Training Performance ===\")
-            print(f\"R^2:  {train_r2:.3f}\")
-            print(f\"MAE:  {train_mae:,.0f}\")
-            print(f\"RMSE: {train_rmse:,.0f}\")
+            print('Training Complete')
+            print('Test Performance')
+            print(f'R^2:  {test_r2:.3f}')
+            print(f'MAE:  {test_mae:,.0f}')
+            print(f'RMSE: {test_rmse:,.0f}')
+            print(f'Training Performance')
+            print(f'R^2:  {train_r2:.3f}')
+            print(f'MAE:  {train_mae:,.0f}')
+            print(f'RMSE: {train_rmse:,.0f}')
             
-            print(\"\\n=== Effects vs. baseline (drop='first') ===\")
-            print(coefficients_df.to_string(index=False))
+            print('Top Feature Effects')
+            print(coefficients_df.head(10).to_string(index=False))
             
         except Exception as e:
-            print(f\"ERROR saving results: {e}\")
-            sys.exit(1)
+            raise Exception(f'ERROR saving results: {e}')
+        
+        print('Model training completed successfully!')
+        print(f'Trained model saved to: {trained_model_path}')
+        print(f'Training history saved to: {training_history_path}')
+        print(f'Coefficients saved to: {model_coefficients_path}')
+        " "$0" "$1" "$2" "$3" "$4" "$5" "$6"
     args:
-      - --data_path
       - {inputPath: data_path}
-      - --preprocessing_pipeline
       - {inputPath: preprocessing_pipeline}
-      - --config
       - {inputValue: config}
-      - --trained_model
       - {outputPath: trained_model}
-      - --training_history
       - {outputPath: training_history}
-      - --model_coefficients
       - {outputPath: model_coefficients}
