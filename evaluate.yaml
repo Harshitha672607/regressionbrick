@@ -1,4 +1,4 @@
-name: 5 Linear Regression Evaluate Model
+name: 6 Linear Regression Evaluate Model
 description: Evaluates trained HR Linear Regression model and generates comprehensive metrics
 inputs:
   - name: trained_model
@@ -13,7 +13,7 @@ outputs:
   - name: metrics_json
     type: String
   - name: evaluation_report
-    type: String
+  type: String
 implementation:
   container:
     image: nikhilv215/nesy-factory:v22
@@ -29,16 +29,16 @@ implementation:
         for i, arg in enumerate(sys.argv):
             print(f'  Argument {i}: {arg}')
         
-        # Get args - Expect 7 arguments total
-        if len(sys.argv) < 7:
-            raise ValueError(f'Expected 7 arguments, got {len(sys.argv)}')
+        # Get args - Skip the first 2 arguments (-c and --) and take the next 6
+        if len(sys.argv) < 8:
+            raise ValueError(f'Expected at least 8 arguments, got {len(sys.argv)}')
         
-        trained_model_path = sys.argv[1]
-        data_path = sys.argv[2]
-        model_coefficients_path = sys.argv[3]
-        metrics_path = sys.argv[4]
-        metrics_json_path = sys.argv[5]
-        evaluation_report_path = sys.argv[6]
+        trained_model_path = sys.argv[2]  # Skip -c and --
+        data_path = sys.argv[3]
+        model_coefficients_path = sys.argv[4]
+        metrics_path = sys.argv[5]
+        metrics_json_path = sys.argv[6]
+        evaluation_report_path = sys.argv[7]
         
         print('Starting HR Linear Regression Evaluation')
         print(f'Trained model path: {trained_model_path}')
@@ -114,7 +114,7 @@ implementation:
             }
         
         print(f'Evaluating on {len(X_test)} test samples')
-        print(f'Features: {dataset_info.get(\"feature_columns\", [])}')
+        print(f'Features: {dataset_info.get(\\\"feature_columns\\\", [])}')
         
         # Make predictions
         y_pred = model_pipeline.predict(X_test)
@@ -165,9 +165,9 @@ implementation:
             }
         }
         
-        # Create simple evaluation report without complex formatting
-        evaluation_report = f'HR Compensation Linear Regression Evaluation Report'
-        evaluation_report += f'========='
+        # Create simple evaluation report
+        evaluation_report = f'HR Compensation Linear Regression Evaluation Report\\n'
+        evaluation_report += f'===================================================\\n\\n'
         evaluation_report += f'Model Performance:'
         evaluation_report += f'R² Score: {r2:.3f}'
         evaluation_report += f'Mean Absolute Error: {mae:,.0f}'
@@ -177,10 +177,10 @@ implementation:
         evaluation_report += f'Predictions within 10% of actual: {error_percentage_10:.1f}%'
         evaluation_report += f'Predictions within 20% of actual: {error_percentage_20:.1f}%'
         evaluation_report += f'Predictions within 30% of actual: {error_percentage_30:.1f}%'
-        evaluation_report += f'Target Statistics:\\n'
+        evaluation_report += f'Target Statistics:'
         evaluation_report += f'Actual Salary - Mean: {np.mean(y_test):,.0f}, Std: {np.std(y_test):,.0f}'
         evaluation_report += f'Predicted Salary - Mean: {np.mean(y_pred):,.0f}, Std: {np.std(y_pred):,.0f}'
-        evaluation_report += f'Features Used: {\\", \\".join(dataset_info.get(\\"feature_columns\\", []))}'
+        evaluation_report += f'Features Used: {\\\", \\\".join(dataset_info.get(\\\"feature_columns\\\", []))}'
         evaluation_report += f'Total Test Samples: {len(y_test)}'
         
         # Save outputs
