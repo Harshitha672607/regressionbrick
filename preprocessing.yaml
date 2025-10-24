@@ -1,4 +1,4 @@
-name: 4 Preprocess HR Compensation Data
+name: 5 Preprocess HR Compensation Data
 description: Preprocesses HR compensation data with OneHotEncoding and log transformation
 inputs:
   - name: train_data
@@ -36,7 +36,7 @@ implementation:
         for i, arg in enumerate(sys.argv):
             print(f'  Argument {i}: {arg[:100] if len(str(arg)) > 100 else arg}')
 
-        # Expected: 1 (script name) + 7 actual args
+        # Expect: 1 script name + 7 actual args = 8 total
         if len(sys.argv) != 8:
             raise ValueError(f'Expected 8 total args (including script), got {len(sys.argv)} -> {sys.argv}')
 
@@ -44,7 +44,6 @@ implementation:
 
         print('Starting HR compensation preprocessing...')
 
-        # === Load input data ===
         train_df = pd.read_csv(train_path)
         test_df = pd.read_csv(test_path)
         with open(info_path, 'rb') as f:
@@ -124,7 +123,7 @@ implementation:
         print(f'Pipeline saved to: {pipeline_path}')
         PYCODE
     args:
-      - {inputPath: train_data}
+      - {inputPath: train_data}            
       - {inputPath: test_data}
       - {inputPath: dataset_info}
       - {inputValue: model_config}
