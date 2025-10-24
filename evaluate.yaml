@@ -1,4 +1,4 @@
-name: 6 Linear Regression Evaluate Model
+name: 7 Linear Regression Evaluate Model
 description: Evaluates trained HR Linear Regression model and generates comprehensive metrics
 inputs:
   - name: trained_model
@@ -13,7 +13,7 @@ outputs:
   - name: metrics_json
     type: String
   - name: evaluation_report
-  type: String
+    type: String
 implementation:
   container:
     image: nikhilv215/nesy-factory:v22
@@ -166,8 +166,8 @@ implementation:
         }
         
         # Create simple evaluation report
-        evaluation_report = f'HR Compensation Linear Regression Evaluation Report\\n'
-        evaluation_report += f'===================================================\\n\\n'
+        evaluation_report = f'HR Compensation Linear Regression Evaluation Report'
+        evaluation_report += f'========================================='
         evaluation_report += f'Model Performance:'
         evaluation_report += f'R² Score: {r2:.3f}'
         evaluation_report += f'Mean Absolute Error: {mae:,.0f}'
