@@ -1,4 +1,4 @@
-name: 2 Preprocess HR Compensation Data
+name: 3 Preprocess HR Compensation Data
 description: Preprocesses HR compensation data with OneHotEncoding and log transformation
 inputs:
   - name: train_data
@@ -24,7 +24,7 @@ implementation:
       - sh
       - -c
       - |
-        python -c "
+        python - "$@" <<'PYCODE'
         import sys, os, json, pickle, pandas as pd, numpy as np
         from sklearn.compose import ColumnTransformer
         from sklearn.preprocessing import OneHotEncoder
@@ -36,7 +36,6 @@ implementation:
         for i, arg in enumerate(sys.argv):
             print(f'  Argument {i}: {arg[:100] if len(str(arg)) > 100 else arg}')
 
-        # Get args
         if len(sys.argv) < 8:
             raise ValueError(f'Expected 8 arguments, got {len(sys.argv)}')
 
@@ -50,31 +49,27 @@ implementation:
 
         print('Starting HR compensation preprocessing...')
 
-        # Load CSV data
         train_df = pd.read_csv(train_path)
         test_df = pd.read_csv(test_path)
         with open(info_path, 'rb') as f:
             dataset_info = pickle.load(f)
 
         print(f'Loaded train: {train_df.shape[0]} samples, test: {test_df.shape[0]} samples')
-        print(f'Feature columns: {dataset_info[\"feature_columns\"]}')
+        print(f'Feature columns: {dataset_info["feature_columns"]}')
 
         target_col = dataset_info['target_column']
 
-        # Extract features and targets
         X_train = train_df.drop(columns=[target_col])
         y_train = train_df[target_col]
         X_test = test_df.drop(columns=[target_col])
         y_test = test_df[target_col]
 
-        # Define preprocessing
         numeric_features = dataset_info.get('numeric_features', ['years_exp'])
         categorical_features = dataset_info.get('categorical_features', ['level', 'location', 'function'])
 
         print(f'Numeric features: {numeric_features}')
         print(f'Categorical features: {categorical_features}')
 
-        # Create preprocessing pipeline
         preprocess = ColumnTransformer(
             transformers=[
                 ('num', 'passthrough', numeric_features),
@@ -82,7 +77,6 @@ implementation:
             ]
         )
 
-        # Full pipeline with log transformation
         linreg = LinearRegression()
         model = TransformedTargetRegressor(
             regressor=Pipeline(steps=[('prep', preprocess), ('lin', linreg)]),
@@ -93,7 +87,6 @@ implementation:
 
         print('Preprocessing pipeline created successfully')
 
-        # Create data wrapper
         class DataWrapper:
             def __init__(self, data_dict):
                 self.__dict__.update(data_dict)
@@ -110,17 +103,14 @@ implementation:
             'dataset_info': dataset_info
         })
 
-        # Save processed data
         os.makedirs(os.path.dirname(out_path) or '.', exist_ok=True)
         with open(out_path, 'wb') as f:
             pickle.dump(data_wrapper, f)
 
-        # Save preprocessing pipeline separately
         os.makedirs(os.path.dirname(pipeline_path) or '.', exist_ok=True)
         with open(pipeline_path, 'wb') as f:
             pickle.dump(preprocess, f)
 
-        # Save config/weights
         weight_config = {
             'preprocessing_complete': True,
             'numeric_features': numeric_features,
@@ -137,7 +127,7 @@ implementation:
         print('HR compensation preprocessing complete!')
         print(f'Output saved to: {out_path}')
         print(f'Pipeline saved to: {pipeline_path}')
-        "
+        PYCODE
     args:
       - {inputPath: train_data}
       - {inputPath: test_data}
