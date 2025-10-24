@@ -1,4 +1,4 @@
-name: 3 Preprocess HR Compensation Data
+name: 4 Preprocess HR Compensation Data
 description: Preprocesses HR compensation data with OneHotEncoding and log transformation
 inputs:
   - name: train_data
@@ -36,19 +36,15 @@ implementation:
         for i, arg in enumerate(sys.argv):
             print(f'  Argument {i}: {arg[:100] if len(str(arg)) > 100 else arg}')
 
-        if len(sys.argv) < 8:
-            raise ValueError(f'Expected 8 arguments, got {len(sys.argv)}')
+        # Expected: 1 (script name) + 7 actual args
+        if len(sys.argv) != 8:
+            raise ValueError(f'Expected 8 total args (including script), got {len(sys.argv)} -> {sys.argv}')
 
-        train_path = sys.argv[1]
-        test_path = sys.argv[2]
-        info_path = sys.argv[3]
-        config_str = sys.argv[4]
-        out_path = sys.argv[5]
-        pipeline_path = sys.argv[6]
-        weight_path = sys.argv[7]
+        _, train_path, test_path, info_path, config_str, out_path, pipeline_path, weight_path = sys.argv
 
         print('Starting HR compensation preprocessing...')
 
+        # === Load input data ===
         train_df = pd.read_csv(train_path)
         test_df = pd.read_csv(test_path)
         with open(info_path, 'rb') as f:
@@ -58,7 +54,6 @@ implementation:
         print(f'Feature columns: {dataset_info["feature_columns"]}')
 
         target_col = dataset_info['target_column']
-
         X_train = train_df.drop(columns=[target_col])
         y_train = train_df[target_col]
         X_test = test_df.drop(columns=[target_col])
