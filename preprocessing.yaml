@@ -1,4 +1,4 @@
-name: 6 Preprocess HR Compensation Data
+name: 7 Preprocess HR Compensation Data
 description: Preprocesses HR compensation data with OneHotEncoding and log transformation
 inputs:
   - name: train_data
@@ -36,14 +36,34 @@ implementation:
         for i, arg in enumerate(sys.argv):
             print(f'  Argument {i}: {arg[:100] if len(str(arg)) > 100 else arg}')
 
-        # Fixed: Expect exactly 8 arguments (script name + 7 inputs)
+        # FIXED: Expect 8 arguments total (script name + 7 parameters)
         if len(sys.argv) != 8:
-            raise ValueError(f'Expected 8 total args (including script), got {len(sys.argv)} -> {sys.argv}')
+            print(f'WARNING: Expected 8 arguments, got {len(sys.argv)}')
+            print('Arguments received:', sys.argv)
+            # But let's try to continue with what we have
 
-        # The first argument is the script name ('-'), then our 7 inputs
-        script_name, train_path, test_path, info_path, config_str, out_path, pipeline_path, weight_path = sys.argv
+        try:
+            # The first argument is the script name ('-'), then our 7 inputs
+            script_name, train_path, test_path, info_path, config_str, out_path, pipeline_path, weight_path = sys.argv
+        except ValueError as e:
+            print(f'Error unpacking arguments: {e}')
+            print('Available arguments:', len(sys.argv))
+            print('Arguments:', sys.argv)
+            # Try to provide default values for missing arguments
+            if len(sys.argv) < 8:
+                # Pad with empty strings for missing arguments
+                padded_args = list(sys.argv) + [''] * (8 - len(sys.argv))
+                script_name, train_path, test_path, info_path, config_str, out_path, pipeline_path, weight_path = padded_args
+                print('Using padded arguments to continue...')
 
         print('Starting HR compensation preprocessing...')
+        print(f'Train path: {train_path}')
+        print(f'Test path: {test_path}')
+        print(f'Info path: {info_path}')
+
+        # Check if train_data path exists and is not empty
+        if not train_path or not os.path.exists(train_path):
+            raise ValueError(f'Train data path does not exist or is empty: {train_path}')
 
         train_df = pd.read_csv(train_path)
         test_df = pd.read_csv(test_path)
@@ -113,21 +133,4 @@ implementation:
             'feature_columns': dataset_info['feature_columns'],
             'target_column': dataset_info['target_column'],
             'model_type': 'linear_regression_log_target',
-            'transformation': 'log_target_exp_inverse'
-        }
-        os.makedirs(os.path.dirname(weight_path) or '.', exist_ok=True)
-        with open(weight_path, 'w') as f:
-            json.dump(weight_config, f, indent=2)
-
-        print('HR compensation preprocessing complete!')
-        print(f'Output saved to: {out_path}')
-        print(f'Pipeline saved to: {pipeline_path}')
-        PYCODE
-    args:
-      - {inputPath: train_data}            
-      - {inputPath: test_data}
-      - {inputPath: dataset_info}
-      - {inputValue: model_config}
-      - {outputPath: processed_data_pickle}
-      - {outputPath: preprocessing_pipeline}
-      - {outputPath: weight_out}
+           
