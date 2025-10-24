@@ -1,4 +1,4 @@
-name: 5 Preprocess HR Compensation Data
+name: 6 Preprocess HR Compensation Data
 description: Preprocesses HR compensation data with OneHotEncoding and log transformation
 inputs:
   - name: train_data
@@ -36,11 +36,12 @@ implementation:
         for i, arg in enumerate(sys.argv):
             print(f'  Argument {i}: {arg[:100] if len(str(arg)) > 100 else arg}')
 
-        # Expect: 1 script name + 7 actual args = 8 total
+        # Fixed: Expect exactly 8 arguments (script name + 7 inputs)
         if len(sys.argv) != 8:
             raise ValueError(f'Expected 8 total args (including script), got {len(sys.argv)} -> {sys.argv}')
 
-        _, train_path, test_path, info_path, config_str, out_path, pipeline_path, weight_path = sys.argv
+        # The first argument is the script name ('-'), then our 7 inputs
+        script_name, train_path, test_path, info_path, config_str, out_path, pipeline_path, weight_path = sys.argv
 
         print('Starting HR compensation preprocessing...')
 
