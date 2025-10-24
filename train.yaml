@@ -1,4 +1,4 @@
-name: HR Linear Regression Train Model
+name: HR Linear Regression Train Model 1
 description: Trains Linear Regression model with log transformation on HR compensation data
 inputs:
   - name: data_path
@@ -47,6 +47,12 @@ implementation:
         print(f'Data path: {data_path}')
         print(f'Preprocessing path: {preprocessing_path}')
         
+        # Define the DataWrapper class (MUST MATCH THE PREPROCESSING COMPONENT)
+        class DataWrapper:
+            def __init__(self, data_dict=None):
+                if data_dict:
+                    self.__dict__.update(data_dict)
+        
         # Load data
         if not os.path.exists(data_path):
             raise FileNotFoundError(f'data_path does not exist: {data_path}')
@@ -68,18 +74,43 @@ implementation:
         except Exception as e:
             raise Exception(f'ERROR loading preprocessing pipeline: {e}')
             
-        # Extract data
-        X_train = data_wrapper.X_train
-        y_train = data_wrapper.y_train
-        X_test = data_wrapper.X_test
-        y_test = data_wrapper.y_test
-        model_pipeline = data_wrapper.model_pipeline
+        # Extract data - handle both DataWrapper and direct attribute access
+        try:
+            # If it's a DataWrapper object
+            X_train = data_wrapper.X_train
+            y_train = data_wrapper.y_train
+            X_test = data_wrapper.X_test
+            y_test = data_wrapper.y_test
+            model_pipeline = data_wrapper.model_pipeline
+            numeric_features = data_wrapper.numeric_features
+            categorical_features = data_wrapper.categorical_features
+        except AttributeError:
+            # If it's a dictionary or different structure
+            if hasattr(data_wrapper, '__dict__'):
+                X_train = data_wrapper.__dict__.get('X_train')
+                y_train = data_wrapper.__dict__.get('y_train')
+                X_test = data_wrapper.__dict__.get('X_test')
+                y_test = data_wrapper.__dict__.get('y_test')
+                model_pipeline = data_wrapper.__dict__.get('model_pipeline')
+                numeric_features = data_wrapper.__dict__.get('numeric_features', ['years_exp'])
+                categorical_features = data_wrapper.__dict__.get('categorical_features', ['level', 'location', 'function'])
+            else:
+                # Assume it's a dictionary
+                X_train = data_wrapper.get('X_train')
+                y_train = data_wrapper.get('y_train')
+                X_test = data_wrapper.get('X_test')
+                y_test = data_wrapper.get('y_test')
+                model_pipeline = data_wrapper.get('model_pipeline')
+                numeric_features = data_wrapper.get('numeric_features', ['years_exp'])
+                categorical_features = data_wrapper.get('categorical_features', ['level', 'location', 'function'])
         
         print(f'Training on {len(X_train)} samples, testing on {len(X_test)} samples')
         print(f'Features: {list(X_train.columns)}')
+        print(f'Numeric features: {numeric_features}')
+        print(f'Categorical features: {categorical_features}')
         
         # Train model
-        print('Training model...')
+        print('Training model')
         model_pipeline.fit(X_train, y_train)
         
         # Make predictions
@@ -100,7 +131,7 @@ implementation:
             ohe = pipe.named_steps['prep'].named_transformers_['cat']
             lin = pipe.named_steps['lin']
             
-            feature_names = np.r_[data_wrapper.numeric_features, ohe.get_feature_names_out(data_wrapper.categorical_features)]
+            feature_names = np.r_[numeric_features, ohe.get_feature_names_out(categorical_features)]
             coefs_log = lin.coef_
             
             coefficients_df = pd.DataFrame({
@@ -139,7 +170,7 @@ implementation:
                 'rmse': float(test_rmse)
             },
             'coefficients': coefficients_df.to_dict('records'),
-            'feature_names': feature_names.tolist(),
+            'feature_names': list(feature_names) if hasattr(feature_names, 'tolist') else feature_names,
             'intercept_log': intercept_log,
             'intercept_original': intercept_original,
             'training_samples': len(X_train),
