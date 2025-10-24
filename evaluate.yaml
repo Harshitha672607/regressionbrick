@@ -1,4 +1,4 @@
-name: HR Linear Regression Evaluate Model
+name: Linear Regression Evaluate Model
 description: Evaluates trained HR Linear Regression model and generates comprehensive metrics
 inputs:
   - name: trained_model
@@ -16,65 +16,105 @@ outputs:
     type: String
 implementation:
   container:
-    image: gurpreetgandhi/nesy-factory:v19
+    image: nikhilv215/nesy-factory:v22
     command:
-      - python3
-      - -u
+      - sh
       - -c
       - |
+        python -c "
         import sys, os, pickle, json, pandas as pd, numpy as np
         from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
-        import argparse
         
-        parser = argparse.ArgumentParser()
-        parser.add_argument('--trained_model', type=str, required=True)
-        parser.add_argument('--data_path', type=str, required=True)
-        parser.add_argument('--model_coefficients', type=str, required=True)
-        parser.add_argument('--metrics', type=str, required=True)
-        parser.add_argument('--metrics_json', type=str, required=True)
-        parser.add_argument('--evaluation_report', type=str, required=True)
-        args = parser.parse_args()
+        print('Number of arguments received:', len(sys.argv))
+        for i, arg in enumerate(sys.argv):
+            print(f'  Argument {i}: {arg}')
         
-        print(\"Starting HR Linear Regression Evaluation\")
+        # Get args - Expect 7 arguments total
+        if len(sys.argv) < 7:
+            raise ValueError(f'Expected 7 arguments, got {len(sys.argv)}')
+        
+        trained_model_path = sys.argv[1]
+        data_path = sys.argv[2]
+        model_coefficients_path = sys.argv[3]
+        metrics_path = sys.argv[4]
+        metrics_json_path = sys.argv[5]
+        evaluation_report_path = sys.argv[6]
+        
+        print('Starting HR Linear Regression Evaluation')
+        print(f'Trained model path: {trained_model_path}')
+        print(f'Data path: {data_path}')
+        print(f'Coefficients path: {model_coefficients_path}')
+        
+        # Define the DataWrapper class (MUST MATCH THE PREPROCESSING COMPONENT)
+        class DataWrapper:
+            def __init__(self, data_dict=None):
+                if data_dict:
+                    self.__dict__.update(data_dict)
         
         # Load trained model
-        if not os.path.exists(args.trained_model):
-            print(\"ERROR: trained_model does not exist!\")
-            sys.exit(1)
+        if not os.path.exists(trained_model_path):
+            raise FileNotFoundError(f'trained_model does not exist: {trained_model_path}')
             
-        if not os.path.exists(args.data_path):
-            print(\"ERROR: data_path does not exist!\")
-            sys.exit(1)
+        if not os.path.exists(data_path):
+            raise FileNotFoundError(f'data_path does not exist: {data_path}')
             
         try:
-            with open(args.trained_model, 'rb') as f:
+            with open(trained_model_path, 'rb') as f:
                 model_pipeline = pickle.load(f)
-            print(\"Trained model loaded successfully\")
+            print('Trained model loaded successfully')
         except Exception as e:
-            print(f\"ERROR loading trained model: {e}\")
-            sys.exit(1)
+            raise Exception(f'ERROR loading trained model: {e}')
             
         try:
-            with open(args.data_path, 'rb') as f:
+            with open(data_path, 'rb') as f:
                 data_wrapper = pickle.load(f)
-            print(\"Data loaded successfully\")
+            print('Data loaded successfully')
         except Exception as e:
-            print(f\"ERROR loading data: {e}\")
-            sys.exit(1)
+            raise Exception(f'ERROR loading data: {e}')
             
         # Load coefficients
         try:
-            with open(args.model_coefficients, 'r') as f:
+            with open(model_coefficients_path, 'r') as f:
                 coefficients_csv = f.read()
             coefficients_df = pd.read_csv(pd.compat.StringIO(coefficients_csv))
-            print(\"Coefficients loaded successfully\")
+            print('Coefficients loaded successfully')
         except Exception as e:
-            print(f\"ERROR loading coefficients: {e}\")
+            print(f'ERROR loading coefficients: {e}')
             coefficients_df = pd.DataFrame()
         
-        # Extract test data
-        X_test = data_wrapper.X_test
-        y_test = data_wrapper.y_test
+        # Extract test data - handle both DataWrapper and direct attribute access
+        try:
+            # If it's a DataWrapper object
+            X_test = data_wrapper.X_test
+            y_test = data_wrapper.y_test
+            dataset_info = data_wrapper.dataset_info
+            numeric_features = data_wrapper.numeric_features
+            categorical_features = data_wrapper.categorical_features
+        except AttributeError:
+            # If it's a dictionary or different structure
+            if hasattr(data_wrapper, '__dict__'):
+                X_test = data_wrapper.__dict__.get('X_test')
+                y_test = data_wrapper.__dict__.get('y_test')
+                dataset_info = data_wrapper.__dict__.get('dataset_info', {})
+                numeric_features = data_wrapper.__dict__.get('numeric_features', ['years_exp'])
+                categorical_features = data_wrapper.__dict__.get('categorical_features', ['level', 'location', 'function'])
+            else:
+                # Assume it's a dictionary
+                X_test = data_wrapper.get('X_test')
+                y_test = data_wrapper.get('y_test')
+                dataset_info = data_wrapper.get('dataset_info', {})
+                numeric_features = data_wrapper.get('numeric_features', ['years_exp'])
+                categorical_features = data_wrapper.get('categorical_features', ['level', 'location', 'function'])
+        
+        # Fallback for dataset_info
+        if not dataset_info:
+            dataset_info = {
+                'feature_columns': list(X_test.columns) if X_test is not None else [],
+                'target_column': 'salary'
+            }
+        
+        print(f'Evaluating on {len(X_test)} test samples')
+        print(f'Features: {dataset_info.get(\"feature_columns\", [])}')
         
         # Make predictions
         y_pred = model_pipeline.predict(X_test)
@@ -120,7 +160,7 @@ implementation:
             'model_info': {
                 'model_type': 'linear_regression_log_target',
                 'total_samples': len(y_test),
-                'features_used': data_wrapper.dataset_info['feature_columns'],
+                'features_used': dataset_info.get('feature_columns', []),
                 'coefficients_count': len(coefficients_df) if not coefficients_df.empty else 0
             },
             'coefficients_preview': coefficients_df.head(10).to_dict('records') if not coefficients_df.empty else []
@@ -149,38 +189,33 @@ implementation:
         Actual Salary - Mean: {np.mean(y_test):,.0f}, Std: {np.std(y_test):,.0f}
         Predicted Salary - Mean: {np.mean(y_pred):,.0f}, Std: {np.std(y_pred):,.0f}
         
-        Features Used: {', '.join(data_wrapper.dataset_info['feature_columns'])}
+        Features Used: {', '.join(dataset_info.get('feature_columns', []))}
         Total Test Samples: {len(y_test)}
         \"\"\"
         
         # Save outputs
-        os.makedirs(os.path.dirname(args.metrics), exist_ok=True)
-        os.makedirs(os.path.dirname(args.metrics_json), exist_ok=True)
-        os.makedirs(os.path.dirname(args.evaluation_report), exist_ok=True)
+        os.makedirs(os.path.dirname(metrics_path) or '.', exist_ok=True)
+        os.makedirs(os.path.dirname(metrics_json_path) or '.', exist_ok=True)
+        os.makedirs(os.path.dirname(evaluation_report_path) or '.', exist_ok=True)
         
-        with open(args.metrics, 'w') as f:
+        with open(metrics_path, 'w') as f:
             json.dump(metrics, f, indent=2)
             
-        with open(args.metrics_json, 'w') as f:
+        with open(metrics_json_path, 'w') as f:
             json.dump(metrics, f, indent=2)
             
-        with open(args.evaluation_report, 'w') as f:
+        with open(evaluation_report_path, 'w') as f:
             f.write(evaluation_report)
         
-        print(\"=== Evaluation Complete ===\")
+        print('Evaluation Complete')
         print(evaluation_report)
-        print(f\"\\nMetrics saved to: {args.metrics}\")
-        print(f\"Evaluation report saved to: {args.evaluation_report}\")
+        print(f'Metrics saved to: {metrics_path}')
+        print(f'Evaluation report saved to: {evaluation_report_path}')
+        " "$0" "$1" "$2" "$3" "$4" "$5" "$6"
     args:
-      - --trained_model
       - {inputPath: trained_model}
-      - --data_path
       - {inputPath: data_path}
-      - --model_coefficients
       - {inputPath: model_coefficients}
-      - --metrics
       - {outputPath: metrics}
-      - --metrics_json
       - {outputPath: metrics_json}
-      - --evaluation_report
       - {outputPath: evaluation_report}
